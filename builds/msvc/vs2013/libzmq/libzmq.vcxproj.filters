@@ -61,7 +61,7 @@
     <ClCompile Include="..\..\..\..\src\metadata.cpp">
       <Filter>src</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\src\msg.cpp">
+    <ClCompile Include="..\..\..\..\src\mmsg.cpp">
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\..\src\mtrie.cpp">
@@ -328,6 +328,9 @@
       <Filter>src\include</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\src\mailbox.hpp">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\src\mmsg.hpp">
       <Filter>src\include</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\src\msg.hpp">

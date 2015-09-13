@@ -60,6 +60,7 @@
 #include "ctx.hpp"
 #include "platform.hpp"
 #include "likely.hpp"
+#include "mmsg.hpp"
 #include "msg.hpp"
 #include "address.hpp"
 #include "ipc_address.hpp"
@@ -1049,6 +1050,86 @@ int zmq::socket_base_t::send (msg_t *msg_, int flags_)
     return 0;
 }
 
+int zmq::socket_base_t::sendm (mmsg_t *msg_, int flags_)
+{
+    ENTER_MUTEX();
+
+    //  Check whether the library haven't been shut down yet.
+    if (unlikely (ctx_terminated)) {
+        errno = ETERM;
+        EXIT_MUTEX();
+        return -1;
+    }
+
+    //  Check whether message passed to the function is valid.
+    if (unlikely (!msg_ || !msg_->check ())) {
+        errno = EFAULT;
+        EXIT_MUTEX();
+        return -1;
+    }
+
+    //  Process pending commands, if any.
+    int rc = process_commands (0, true);
+    if (unlikely (rc != 0)) {
+        EXIT_MUTEX();
+        return -1;
+    }
+
+    msg_->reset_metadata ();
+    msg_->normalize_flags ();
+
+    //  Try to send the message.
+    rc = xsendm (msg_);
+    if (rc == 0) {
+        EXIT_MUTEX();
+        return 0;
+    }
+    if (unlikely (errno != EAGAIN)) {
+        EXIT_MUTEX();
+        return -1;
+    }
+
+    //  In case of non-blocking send we'll simply propagate
+    //  the error - including EAGAIN - up the stack.
+    if (flags_ & ZMQ_DONTWAIT || options.sndtimeo == 0) {
+        EXIT_MUTEX();
+        return -1;
+    }
+
+    //  Compute the time when the timeout should occur.
+    //  If the timeout is infinite, don't care.
+    int timeout = options.sndtimeo;
+    uint64_t end = timeout < 0 ? 0 : (clock.now_ms () + timeout);
+
+    //  Oops, we couldn't send the message. Wait for the next
+    //  command, process it and try to send the message again.
+    //  If timeout is reached in the meantime, return EAGAIN.
+    while (true) {
+        if (unlikely (process_commands (timeout, false) != 0)) {
+            EXIT_MUTEX();
+            return -1;
+        }
+        rc = xsendm (msg_);
+        if (rc == 0)
+            break;
+        if (unlikely (errno != EAGAIN)) {
+            EXIT_MUTEX();
+            return -1;
+        }
+        if (timeout > 0) {
+            timeout = (int) (end - clock.now_ms ());
+            if (timeout <= 0) {
+                errno = EAGAIN;
+                EXIT_MUTEX();
+                return -1;
+            }
+        }
+    }
+
+    EXIT_MUTEX();
+    return 0;
+}
+
 int zmq::socket_base_t::recv (msg_t *msg_, int flags_)
 {
     ENTER_MUTEX();
@@ -1335,6 +1416,12 @@ bool zmq::socket_base_t::xhas_out ()
 }
 
 int zmq::socket_base_t::xsend (msg_t *)
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
+int zmq::socket_base_t::xsendm (mmsg_t *)
 {
     errno = ENOTSUP;
     return -1;

@@ -30,6 +30,7 @@
 #include "macros.hpp"
 #include "client.hpp"
 #include "err.hpp"
+#include "mmsg.hpp"
 #include "msg.hpp"
 
 zmq::client_t::client_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -55,6 +56,17 @@ void zmq::client_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_)
 int zmq::client_t::xsend (msg_t *msg_)
 {
     return lb.sendpipe (msg_, NULL);
+}
+
+int zmq::client_t::xsendm (mmsg_t *msg_)
+{
+    int rc = 0;
+    size_t size = msg_->get_size ();
+
+    for (int i = 0; i != size; i++)
+        rc = lb.sendpipe (msg_->get (i), NULL);
+
+    return rc;
 }
 
 int zmq::client_t::xrecv (msg_t *msg_)

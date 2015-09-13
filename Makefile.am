@@ -91,8 +91,10 @@ src_libzmq_la_SOURCES = \
 	src/mechanism.hpp  \
 	src/metadata.cpp \
 	src/metadata.hpp \
-	src/msg.cpp \
+	src/mmsg.cpp \
+	src/mmsg.hpp \
 	src/msg.hpp \
+	src/msg.cpp \
 	src/mtrie.cpp \
 	src/mtrie.hpp \
 	src/mutex.hpp \

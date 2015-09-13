@@ -106,6 +106,7 @@
     <ClInclude Include="..\..\..\..\src\likely.hpp" />
     <ClInclude Include="..\..\..\..\src\mailbox.hpp" />
     <ClInclude Include="..\..\..\..\src\mailbox_safe.hpp" />
+    <ClInclude Include="..\..\..\..\src\mmsg.hpp" />
     <ClInclude Include="..\..\..\..\src\msg.hpp" />
     <ClInclude Include="..\..\..\..\src\mtrie.hpp" />
     <ClInclude Include="..\..\..\..\src\mutex.hpp" />
@@ -190,6 +191,7 @@
     <ClCompile Include="..\..\..\..\src\mailbox_safe.cpp" />
     <ClCompile Include="..\..\..\..\src\mechanism.cpp" />
     <ClCompile Include="..\..\..\..\src\metadata.cpp" />
+    <ClCompile Include="..\..\..\..\src\mmsg.cpp" />
     <ClCompile Include="..\..\..\..\src\msg.cpp" />
     <ClCompile Include="..\..\..\..\src\mtrie.cpp" />
     <ClCompile Include="..\..\..\..\src\null_mechanism.cpp" />

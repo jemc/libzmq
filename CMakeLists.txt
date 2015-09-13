@@ -388,6 +388,7 @@ set(cxx-sources
         mailbox_safe.cpp
         mechanism.cpp
         metadata.cpp
+        mmsg.cpp
         msg.cpp
         mtrie.cpp
         object.cpp

@@ -27,56 +27,37 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __ZMQ_CLIENT_HPP_INCLUDED__
-#define __ZMQ_CLIENT_HPP_INCLUDED__
+#ifndef __ZMQ_MMSG_HPP_INCLUDE__
+#define __ZMQ_MMSG_HPP_INCLUDE__
 
-#include "socket_base.hpp"
-#include "session_base.hpp"
-#include "fq.hpp"
-#include "lb.hpp"
+#include "msg.hpp"
 
 namespace zmq
 {
-
-    class ctx_t;
-    class msg_t;
-    class pipe_t;
-    class io_thread_t;
-    class socket_base_t;
-
-    class client_t :
-        public socket_base_t
+    class mmsg_t
     {
     public:
+        mmsg_t ();
+        ~mmsg_t ();
 
-        client_t (zmq::ctx_t *parent_, uint32_t tid_, int sid);
-        ~client_t ();
+        size_t get_size ();
 
-    protected:
+        msg_t *get (size_t index_);
+        int push (msg_t *msg_);
 
-        //  Overrides of functions from socket_base_t.
-        void xattach_pipe (zmq::pipe_t *pipe_, bool subscribe_to_all_);        
-        int xsend (zmq::msg_t *msg_);
-        int xsendm (zmq::mmsg_t *msg_);
-        int xrecv (zmq::msg_t *msg_);
-        bool xhas_in ();
-        bool xhas_out ();
-        blob_t get_credential () const;
-        void xread_activated (zmq::pipe_t *pipe_);
-        void xwrite_activated (zmq::pipe_t *pipe_);
-        void xpipe_terminated (zmq::pipe_t *pipe_);
-        
+        bool check ();
+        void reset_metadata ();
+
+        void normalize_flags ();
+
     private:
 
-        //  Messages are fair-queued from inbound pipes. And load-balanced to
-        //  the outbound pipes.
-        fq_t fq;
-        lb_t lb;
-        
-        client_t (const client_t &);
-        const client_t  &operator = (const client_t&);
-    };
+        int set_size (size_t new_size_);
 
+        size_t capacity;
+        size_t size;
+        msg_t **msgs;
+    };
 }
 
 #endif

@@ -55,6 +55,7 @@ namespace zmq
 {
 
     class ctx_t;
+    class mmsg_t;
     class msg_t;
     class pipe_t;
 
@@ -89,6 +90,7 @@ namespace zmq
         int connect (const char *addr_);
         int term_endpoint (const char *addr_);
         int send (zmq::msg_t *msg_, int flags_);
+        int sendm (zmq::mmsg_t *msg_, int flags_);
         int recv (zmq::msg_t *msg_, int flags_);
         int add_signaler (signaler_t *s);
         int remove_signaler (signaler_t *s);
@@ -152,6 +154,7 @@ namespace zmq
         //  The default implementation assumes that send is not supported.
         virtual bool xhas_out ();
         virtual int xsend (zmq::msg_t *msg_);
+        virtual int xsendm (zmq::mmsg_t *msg_);
 
         //  The default implementation assumes that recv in not supported.
         virtual bool xhas_in ();
