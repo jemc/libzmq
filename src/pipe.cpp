@@ -198,6 +198,11 @@ read_message:
     if (lwm > 0 && msgs_read % lwm == 0)
         send_activate_write (peer, msgs_read);
 
+    if (msg_)
+        printf("CC %i, %lu, %p, %s\n", msg_->flags (), msg_->size (), msg_, msg_->data ());
+    if (msg_->linked_tail())
+        printf("DD %i, %lu, %p, %s\n", msg_->linked_tail()->flags (), msg_->linked_tail()->size (), msg_->linked_tail(), msg_->linked_tail()->data ());
+
     return true;
 }
 
@@ -221,7 +226,14 @@ bool zmq::pipe_t::write (msg_t *msg_)
     if (unlikely (!check_write ()))
         return false;
 
+    //  TODO: remove the more variable entirely.
     bool more = msg_->flags () & msg_t::more ? true : false;
+
+    if (msg_)
+        printf("AA %i, %lu, %p, %s\n", msg_->flags (), msg_->size (), msg_, msg_->data ());
+    if (msg_->linked_tail())
+        printf("BB %i, %lu, %p, %s\n", msg_->linked_tail()->flags (), msg_->linked_tail()->size (), msg_->linked_tail(), msg_->linked_tail()->data ());
+
     const bool is_identity = msg_->is_identity ();
     outpipe->write (*msg_, more);
     if (!more && !is_identity)

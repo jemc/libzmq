@@ -90,10 +90,10 @@ int zmq::pair_t::xsend (msg_t *msg_)
         return -1;
     }
 
-    if (!(msg_->flags () & msg_t::more))
-        pipe->flush ();
+    pipe->flush ();
 
     //  Detach the original message from the data buffer.
+    //  TODO: what to do with the tail here?
     int rc = msg_->init ();
     errno_assert (rc == 0);
 

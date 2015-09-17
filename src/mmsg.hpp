@@ -40,23 +40,22 @@ namespace zmq
         mmsg_t ();
         ~mmsg_t ();
 
+        msg_t *get_head ();
+        msg_t *get_final ();
         size_t get_size ();
 
-        msg_t *get (size_t index_);
-        int push (msg_t *msg_);
+        msg_t *take_head ();
+        void append (msg_t *other);
 
         bool check ();
-        void reset_metadata ();
 
+        void reset_metadata ();
         void normalize_flags ();
 
     private:
-
-        int set_size (size_t new_size_);
-
-        size_t capacity;
+        msg_t *head;
+        msg_t *final;
         size_t size;
-        msg_t **msgs;
     };
 }
 

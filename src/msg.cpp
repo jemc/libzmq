@@ -236,10 +236,11 @@ int zmq::msg_t::close ()
         }
     }
 
-    if (u.base.metadata != NULL) {
-        if (u.base.metadata->drop_ref ()) {
-            LIBZMQ_DELETE(u.base.metadata);
-        }
+    //  If there is metadata (that is not actually a linked tail), drop it.
+    //  TODO: recursively close linked tail?
+    if (!is_linked () && u.base.metadata != NULL) {
+        if (u.base.metadata->drop_ref ())
+            delete u.base.metadata;
         u.base.metadata = NULL;
     }
 
@@ -305,7 +306,10 @@ int zmq::msg_t::copy (msg_t &src_)
             src_.refcnt()->set (2);
         }
     }
-    if (src_.u.base.metadata != NULL)
+
+    //  If there is metadata (that is not actually a linked tail), drop it.
+    //  TODO: recursively copy linked tail?
+    if (!is_linked () && src_.u.base.metadata != NULL)
         src_.u.base.metadata->add_ref ();
 
     *this = src_;
@@ -381,25 +385,39 @@ void zmq::msg_t::set_fd (int64_t fd_)
 
 zmq::metadata_t *zmq::msg_t::metadata () const
 {
+    if (u.base.flags & msg_t::linked)
+        return u.linked.tail->metadata ();
+
     return u.base.metadata;
 }
 
 void zmq::msg_t::set_metadata (zmq::metadata_t *metadata_)
 {
-    assert (metadata_ != NULL);
-    assert (u.base.metadata == NULL);
+    if (u.base.flags & msg_t::linked)
+        return u.linked.tail->set_metadata (metadata_);
+
+    zmq_assert (metadata_ != NULL);
+    zmq_assert (u.base.metadata == NULL);
     metadata_->add_ref ();
     u.base.metadata = metadata_;
 }
 
 void zmq::msg_t::reset_metadata ()
 {
+    if (u.base.flags & msg_t::linked)
+        return u.linked.tail->reset_metadata ();
+
     if (u.base.metadata) {
         if (u.base.metadata->drop_ref ()) {
             LIBZMQ_DELETE(u.base.metadata);
         }
         u.base.metadata = NULL;
     }
+}
+
+bool zmq::msg_t::is_linked () const
+{
+    return (u.base.flags & linked) == linked;
 }
 
 bool zmq::msg_t::is_identity () const
@@ -436,7 +454,10 @@ void zmq::msg_t::add_refs (int refs_)
 {
     zmq_assert (refs_ >= 0);
 
-    //  Operation not supported for messages with metadata.
+    //  Operation not yet supported for messages with linked parts.
+    zmq_assert (!is_linked ());
+
+    //  Operation not yet supported for messages with metadata.
     zmq_assert (u.base.metadata == NULL);
 
     //  No copies required.
@@ -458,6 +479,9 @@ void zmq::msg_t::add_refs (int refs_)
 bool zmq::msg_t::rm_refs (int refs_)
 {
     zmq_assert (refs_ >= 0);
+
+    //  Operation not yet supported for messages with linked parts.
+    zmq_assert (!is_linked ());
 
     //  Operation not supported for messages with metadata.
     zmq_assert (u.base.metadata == NULL);
@@ -510,6 +534,59 @@ int zmq::msg_t::set_routing_id (uint32_t routing_id_)
     }
     errno = EINVAL;
     return -1;
+}
+
+void zmq::msg_t::link_tail (msg_t *new_tail)
+{
+    zmq_assert (new_tail);
+    zmq_assert (new_tail != this);
+    zmq_assert (!(u.base.flags & msg_t::linked));
+
+    //  TODO: avoid metadata recursion if possible by changing call site code
+    if (u.base.metadata) {
+        //  If new tail metadata also has metadata, the two should be merged.
+        metadata_t *new_tail_metadata = new_tail->metadata ();
+        if (new_tail_metadata)
+            new_tail_metadata->soft_merge (u.base.metadata);
+
+        //  Drop the reference to this metadata to make room for the tail.
+        //  No need to nullify here, because we set to the new_tail value next.
+        if (u.base.metadata->drop_ref ())
+            delete u.base.metadata;
+    }
+
+    //  Set linked flag and set tail value.
+    u.base.flags |= msg_t::linked;
+    u.linked.tail = new_tail;
+}
+
+zmq::msg_t *zmq::msg_t::unlink_tail ()
+{
+    msg_t *detached_tail = NULL;
+    zmq_assert (u.base.flags & msg_t::linked);
+
+    //  Unset linked flag and get tail value.
+    //  No need to nullify here, because we set to the metadata value next.
+    u.base.flags &= ~msg_t::linked;
+    detached_tail = u.linked.tail;
+
+    //  If there is metadata on the detached_tail, copy the reference.
+    //  If there is no metadata, the NULL value itself is copied.
+    //  TODO: avoid metadata recursion if possible by changing call site code
+    metadata_t *detached_metadata = detached_tail->metadata ();
+    if (detached_metadata)
+        detached_metadata->add_ref ();
+    u.base.metadata = detached_metadata;
+
+    zmq_assert (detached_tail);
+    return detached_tail;
+}
+
+zmq::msg_t *zmq::msg_t::linked_tail ()
+{
+    if (u.base.flags & msg_t::linked)
+        return u.linked.tail;
+    return NULL;
 }
 
 zmq::atomic_counter_t *zmq::msg_t::refcnt()

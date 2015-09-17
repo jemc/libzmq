@@ -44,6 +44,11 @@ const char *zmq::metadata_t::get (const std::string &property) const
         return it->second.c_str ();
 }
 
+void zmq::metadata_t::soft_merge (metadata_t *other)
+{
+    dict.insert(other->dict.begin(), other->dict.end());
+}
+
 void zmq::metadata_t::add_ref ()
 {
     ref_cnt.add (1);

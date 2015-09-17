@@ -142,17 +142,13 @@ int zmq::dist_t::send_to_all (msg_t *msg_)
 
 int zmq::dist_t::send_to_matching (msg_t *msg_)
 {
-    //  Is this end of a multipart message?
-    bool msg_more = msg_->flags () & msg_t::more ? true : false;
-
     //  Push the message to matching pipes.
     distribute (msg_);
 
-    //  If multipart message is fully sent, activate all the eligible pipes.
-    if (!msg_more)
-        active = eligible;
+    //  Activate all the eligible pipes.
+    active = eligible;
 
-    more = msg_more;
+    more = false; // TODO: remove this and the more variable entirely
 
     return 0;
 }
@@ -215,8 +211,7 @@ bool zmq::dist_t::write (pipe_t *pipe_, msg_t *msg_)
         eligible--;
         return false;
     }
-    if (!(msg_->flags () & msg_t::more))
-        pipe_->flush ();
+    pipe_->flush ();
     return true;
 }
 

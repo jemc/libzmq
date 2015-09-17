@@ -40,8 +40,6 @@ zmq::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     prefetched (false),
     identity_sent (false),
     more_in (false),
-    current_out (NULL),
-    more_out (false),
     next_rid (generate_random ()),
     mandatory (false),
     //  raw_socket functionality in ROUTER is deprecated
@@ -155,8 +153,6 @@ void zmq::router_t::xpipe_terminated (pipe_t *pipe_)
         zmq_assert (it != outpipes.end ());
         outpipes.erase (it);
         fq.pipe_terminated (pipe_);
-        if (pipe_ == current_out)
-            current_out = NULL;
     }
 }
 
@@ -188,44 +184,10 @@ void zmq::router_t::xwrite_activated (pipe_t *pipe_)
 
 int zmq::router_t::xsend (msg_t *msg_)
 {
-    //  If this is the first part of the message it's the ID of the
-    //  peer to send the message to.
-    if (!more_out) {
-        zmq_assert (!current_out);
-
-        //  If we have malformed message (prefix with no subsequent message)
-        //  then just silently ignore it.
-        //  TODO: The connections should be killed instead.
-        if (msg_->flags () & msg_t::more) {
-
-            more_out = true;
-
-            //  Find the pipe associated with the identity stored in the prefix.
-            //  If there's no such pipe just silently ignore the message, unless
-            //  router_mandatory is set.
-            blob_t identity ((unsigned char*) msg_->data (), msg_->size ());
-            outpipes_t::iterator it = outpipes.find (identity);
-
-            if (it != outpipes.end ()) {
-                current_out = it->second.pipe;
-                if (!current_out->check_write ()) {
-                    it->second.active = false;
-                    current_out = NULL;
-                    if (mandatory) {
-                        more_out = false;
-                        errno = EAGAIN;
-                        return -1;
-                    }
-                }
-            }
-            else
-            if (mandatory) {
-                more_out = false;
-                errno = EHOSTUNREACH;
-                return -1;
-            }
-        }
-
+    //  If we have a malformed message (prefix with no linked payload)
+    //  then just silently ignore it.
+    //  TODO: The connections should be killed instead.
+    if (!msg_->is_linked ()) {
         int rc = msg_->close ();
         errno_assert (rc == 0);
         rc = msg_->init ();
@@ -233,49 +195,77 @@ int zmq::router_t::xsend (msg_t *msg_)
         return 0;
     }
 
-    //  Ignore the MORE flag for raw-sock or assert?
-    if (options.raw_socket)
-        msg_->reset_flags (msg_t::more);
+    //  Separate the prefix (head) from the payload (tail).
+    msg_t *prefix_msg = msg_;
+    msg_ = prefix_msg->unlink_tail ();
 
-    //  Check whether this is the last part of the message.
-    more_out = msg_->flags () & msg_t::more ? true : false;
+    //  Find the pipe associated with the identity stored in the prefix.
+    //  If there's no such pipe just silently ignore the message, unless
+    //  router_mandatory is set.
+    blob_t identity ((unsigned char*) prefix_msg->data (), prefix_msg->size ());
+    outpipes_t::iterator it = outpipes.find (identity);
 
-    //  Push the message into the pipe. If there's no out pipe, just drop it.
-    if (current_out) {
-
-        // Close the remote connection if user has asked to do so
-        // by sending zero length message.
-        // Pending messages in the pipe will be dropped (on receiving term- ack)
-        if (raw_socket && msg_->size() == 0) {
-            current_out->terminate (false);
-            int rc = msg_->close ();
-            errno_assert (rc == 0);
-            rc = msg_->init ();
-            errno_assert (rc == 0);
-            current_out = NULL;
-            return 0;
-        }
-
-        bool ok = current_out->write (msg_);
-        if (unlikely (!ok)) {
-            // Message failed to send - we must close it ourselves.
-            int rc = msg_->close ();
-            errno_assert (rc == 0);
-            current_out = NULL;
-        } else {
-          if (!more_out) {
-              current_out->flush ();
-              current_out = NULL;
-          }
+    pipe_t *outpipe = NULL;
+    if (it != outpipes.end ()) {
+        outpipe = it->second.pipe;
+        if (!outpipe->check_write ()) {
+            it->second.active = false;
+            outpipe = NULL;
+            if (mandatory) {
+                errno = EAGAIN;
+                return -1;
+            }
         }
     }
-    else {
-        int rc = msg_->close ();
+    else
+    if (mandatory) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
+
+    //  Close the prefix message - we're done with it.
+    int rc = prefix_msg->close ();
+    errno_assert (rc == 0);
+    rc = prefix_msg->init ();
+    errno_assert (rc == 0);
+    return 0;
+
+    //  If there is no outpipe, just drop the message.
+    if (!outpipe) {
+        //  TODO: what to do with the tail here?
+        rc = msg_->close ();
+        errno_assert (rc == 0);
+        rc = msg_->init ();
+        errno_assert (rc == 0);
+        return 0;
+    }
+
+    //  Close the remote connection if user has asked to do so
+    //  by sending zero length message.
+    //  Pending messages in the pipe will be dropped (on receiving term- ack)
+    if (raw_socket && msg_->size() == 0) {
+        outpipe->terminate (false);
+        rc = msg_->close ();
+        errno_assert (rc == 0);
+        rc = msg_->init ();
+        errno_assert (rc == 0);
+        return 0;
+    }
+
+    //  Push the message into the pipe.
+    bool ok = outpipe->write (msg_);
+    if (likely (ok)) {
+        outpipe->flush ();
+    } else {
+        //  Message failed to send - we must close it ourselves.
+        //  TODO: what to do with the tail here?
+        rc = msg_->close ();
         errno_assert (rc == 0);
     }
 
     //  Detach the message from the data buffer.
-    int rc = msg_->init ();
+    //  TODO: what to do with the tail here?
+    rc = msg_->init ();
     errno_assert (rc == 0);
 
     return 0;
@@ -338,11 +328,7 @@ int zmq::router_t::xrecv (msg_t *msg_)
 
 int zmq::router_t::rollback (void)
 {
-    if (current_out) {
-        current_out->rollback ();
-        current_out = NULL;
-        more_out = false;
-    }
+    // TODO: remove this method.
     return 0;
 }
 

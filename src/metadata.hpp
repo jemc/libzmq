@@ -48,6 +48,11 @@ namespace zmq
             //  property is not found.
             const char *get (const std::string &property) const;
 
+            //  Copies keys and their values from other for which
+            //  the given key does not yet exist in this metadata.
+            void soft_merge (metadata_t *other);
+
+            //  Add reference.
             void add_ref ();
 
             //  Drop reference. Returns true iff the reference

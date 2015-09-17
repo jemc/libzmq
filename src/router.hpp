@@ -108,12 +108,6 @@ namespace zmq
         typedef std::map <blob_t, outpipe_t> outpipes_t;
         outpipes_t outpipes;
 
-        //  The pipe we are currently writing to.
-        zmq::pipe_t *current_out;
-
-        //  If true, more outgoing message parts are expected.
-        bool more_out;
-
         //  Routing IDs are generated. It's a simple increment and wrap-over
         //  algorithm. This value is the next ID to use (if not used already).
         uint32_t next_rid;

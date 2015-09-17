@@ -203,31 +203,24 @@ void zmq::xpub_t::mark_as_matching (pipe_t *pipe_, void *arg_)
 
 int zmq::xpub_t::xsend (msg_t *msg_)
 {
-    bool msg_more = msg_->flags () & msg_t::more ? true : false;
+    //  Find the matching pipes based on the content of the first frame (head).
+    subscriptions.match ((unsigned char*) msg_->data (), msg_->size (),
+        mark_as_matching, this);
+    //  If inverted matching is used, reverse the selection now
+    if (options.invert_matching)
+        dist.reverse_match();
 
-    //  For the first part of multi-part message, find the matching pipes.
-    if (!more) {
-        subscriptions.match ((unsigned char*) msg_->data (), msg_->size (),
-            mark_as_matching, this);
-        // If inverted matching is used, reverse the selection now
-        if (options.invert_matching) {
-            dist.reverse_match();
-        }
-    }
-
-    int rc = -1;            //  Assume we fail
+    int rc = -1;    //  Assume we fail
     if (lossy || dist.check_hwm ()) {
-        if (dist.send_to_matching (msg_) == 0) {
-            //  If we are at the end of multi-part message we can mark
-            //  all the pipes as non-matching.
-            if (!msg_more)
-                dist.unmatch ();
-            more = msg_more;
-            rc = 0;         //  Yay, sent successfully
-        }
+        if (dist.send_to_matching (msg_) == 0)
+            rc = 0; //  Yay, sent successfully
     }
     else
         errno = EAGAIN;
+    
+    //  Unmark the pipes we marked at the start of the function.
+    dist.unmatch ();
+    
     return rc;
 }
 

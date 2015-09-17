@@ -33,12 +33,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "err.hpp"
 #include "likely.hpp"
 
 zmq::mmsg_t::mmsg_t () :
-    capacity (0),
-    size (0),
-    msgs (NULL)
+    head (NULL),
+    final (NULL),
+    size (0)
 {
 }
 
@@ -47,80 +48,81 @@ zmq::mmsg_t::~mmsg_t ()
     // TODO
 }
 
+zmq::msg_t *zmq::mmsg_t::get_head ()
+{
+    return head;
+}
+
+zmq::msg_t *zmq::mmsg_t::get_final ()
+{
+    return final;
+}
+
 size_t zmq::mmsg_t::get_size ()
 {
     return size;
 }
 
-zmq::msg_t *zmq::mmsg_t::get (size_t index_)
+zmq::msg_t *zmq::mmsg_t::take_head ()
 {
-    if (unlikely (index_ >= size))
-        return NULL;
-    return msgs[index_];
+    msg_t *detached_head = head;
+    head = final = NULL;
+    size = 0;
+    return detached_head;
 }
 
-int zmq::mmsg_t::push (zmq::msg_t *msg_)
+void zmq::mmsg_t::append (zmq::msg_t *other)
 {
-    size_t index = size;
+    zmq_assert (other);
 
-    int rc = set_size (size + 1);
-    if (rc != 0)
-        return -1;
+    if (!head) {
+        zmq_assert (!final);
+        zmq_assert (size == 0);
+        head = other;
+    }
+    else {
+        zmq_assert (final);
+        zmq_assert (size > 0);
 
-    msgs[index] = msg_;
-    return 0;
+        //  Handle the case in which the calling code uses SNDMORE many times
+        //  with the same zmq_msg_t.
+        if (other == final) {
+            msg_t *new_other = new msg_t;
+            new_other->init ();
+            new_other->copy (*other);
+            other = new_other;
+        }
+
+        final->link_tail(other);
+    }
+
+    final = other;
+    size = size + 1;
 }
 
 bool zmq::mmsg_t::check ()
 {
-    for (size_t i = 0; i < size; i++) {
-        if (!msgs[i]->check ())
+    while (msg_t *cursor = head) {
+        if (!cursor->check ())
             return false;
+        cursor = cursor->linked_tail();
     }
+
     return true;
 }
 
 void zmq::mmsg_t::reset_metadata ()
 {
-    for (size_t i = 0; i < size; i++)
-        msgs[i]->reset_metadata ();
+    //  Only the final message part can hold metadata to be reset.
+    final->reset_metadata ();
 }
 
 void zmq::mmsg_t::normalize_flags ()
 {
-    size_t last = (size - 1);
-    for (size_t i = 0; i < last; i++)
-        msgs[i]->set_flags (msg_t::more);
-
-    msgs[last]->reset_flags (msg_t::more);
-}
-
-
-int zmq::mmsg_t::set_size(size_t new_size_)
-{
-    // If the target size is greater than current capacity, we must expand.
-    if (capacity < new_size_) {
-        // TODO: use larger capacity to reduce reallocations (next power of 2?).
-        size_t new_capacity = new_size_;
-
-        // Allocate the new array of pointers.
-        zmq::msg_t **new_msgs = \
-            (zmq::msg_t **) malloc (new_capacity * sizeof (zmq::msg_t *));
-        if (unlikely (!new_msgs)) {
-            errno = ENOMEM;
-            return -1;
-        }
-
-        // If there is an existing array, it must be copied then freed.
-        if (msgs) {
-            memcpy (new_msgs, msgs, size * sizeof (zmq::msg_t *));
-            free (msgs);
-        }
-
-        capacity = new_capacity;
-        msgs = new_msgs;
+    //  Unset the more flag on all linked messages.
+    //  TODO: remove the need for this - make linked checks prevent more checks.
+    while (msg_t *cursor = head) {
+        cursor->reset_flags (msg_t::more);
+        cursor = cursor->linked_tail ();
     }
-
-    size = new_size_;
-    return 0;
 }

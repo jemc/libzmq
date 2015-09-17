@@ -48,7 +48,7 @@ void zmq::v2_encoder_t::message_ready ()
     //  Encode flags.
     unsigned char &protocol_flags = tmpbuf [0];
     protocol_flags = 0;
-    if (in_progress->flags () & msg_t::more)
+    if (in_progress->is_linked ())
         protocol_flags |= v2_protocol_t::more_flag;
     if (in_progress->size () > 255)
         protocol_flags |= v2_protocol_t::large_flag;
@@ -71,6 +71,8 @@ void zmq::v2_encoder_t::message_ready ()
 
 void zmq::v2_encoder_t::size_ready ()
 {
+        printf(">> %i, %lu, %s\n", in_progress->flags (), in_progress->size (), in_progress->data ());
+    
     //  Write message body into the buffer.
     next_step (in_progress->data (), in_progress->size (),
         &v2_encoder_t::message_ready, true);

@@ -40,7 +40,8 @@ namespace zmq
     class io_thread_t;
     class socket_base_t;
 
-    class rep_t : public router_t
+    class rep_t :
+        public socket_base_t
     {
     public:
 
@@ -52,6 +53,9 @@ namespace zmq
         int xrecv (zmq::msg_t *msg_);
         bool xhas_in ();
         bool xhas_out ();
+        void xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_);
+        void xread_activated (pipe_t *pipe_);
+        void xpipe_terminated (pipe_t *pipe_);
 
     private:
 
@@ -61,11 +65,17 @@ namespace zmq
 
         //  If true, we are starting to receive a request. The beginning
         //  of the request is the backtrace stack.
+        //  TODO: remove this after rewriting xrecv.
         bool request_begins;
+
+        //  Fair queueing object for inbound pipes.
+        fq_t fq;
+
+        //  The pipe to which the reply should be sent, or NULL.
+        zmq::pipe_t *reply_pipe;
 
         rep_t (const rep_t&);
         const rep_t &operator = (const rep_t&);
-
     };
 
 }

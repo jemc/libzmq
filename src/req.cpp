@@ -66,62 +66,50 @@ int zmq::req_t::xsend (msg_t *msg_)
         message_begins = true;
     }
 
-    //  First part of the request is the request identity.
-    if (message_begins) {
-        reply_pipe = NULL;
+    reply_pipe = NULL;
 
-        if (request_id_frames_enabled) {
-            request_id++;
+    //  Prepend the "bottom" empty delimiter frame.
+    msg_t bottom_msg;
+    int rc = bottom_msg.init ();
+    errno_assert (rc == 0);
+    bottom_msg.link_tail (msg_);
+    msg_ = &bottom_msg;
 
-            msg_t id;
-            int rc = id.init_data (&request_id, sizeof (request_id), NULL, NULL);
-            errno_assert (rc == 0);
-            id.set_flags (msg_t::more);
+    //  Prepend the request identity (if enabled).
+    if (request_id_frames_enabled) {
+        request_id++;
 
-            rc = dealer_t::sendpipe (&id, &reply_pipe);
-            if (rc != 0)
-                return -1;
-        }
-
-        msg_t bottom;
-        int rc = bottom.init ();
+        msg_t id_msg;
+        rc = id_msg.init_data (&request_id, sizeof (request_id), NULL, NULL);
         errno_assert (rc == 0);
-        bottom.set_flags (msg_t::more);
-
-        rc = dealer_t::sendpipe (&bottom, &reply_pipe);
-        if (rc != 0)
-            return -1;
-        zmq_assert (reply_pipe);
-
-        message_begins = false;
-
-        // Eat all currently available messages before the request is fully
-        // sent. This is done to avoid:
-        //   REQ sends request to A, A replies, B replies too.
-        //   A's reply was first and matches, that is used.
-        //   An hour later REQ sends a request to B. B's old reply is used.
-        msg_t drop;
-        while (true) {
-            rc = drop.init ();
-            errno_assert (rc == 0);
-            rc = dealer_t::xrecv (&drop);
-            if (rc != 0)
-                break;
-            drop.close ();
-        }
+        id_msg.link_tail (msg_);
+        msg_ = &id_msg;
     }
 
-    bool more = msg_->flags () & msg_t::more ? true : false;
+    // Eat all currently available messages before the request is sent.
+    // This is done to avoid:
+    //   REQ sends request to A, A replies, B replies too.
+    //   A's reply was first and matches, that is used.
+    //   An hour later REQ sends a request to B. B's old reply is used.
+    msg_t drop;
+    while (true) {
+        rc = drop.init ();
+        errno_assert (rc == 0);
+        rc = dealer_t::xrecv (&drop);
+        if (rc != 0)
+            break;
+        drop.close ();
+    }
 
-    int rc = dealer_t::xsend (msg_);
+    //  Send the message and take note of the pipe that was used.
+    rc = dealer_t::sendpipe (msg_, &reply_pipe);
     if (rc != 0)
         return rc;
+    zmq_assert (reply_pipe);
 
-    //  If the request was fully sent, flip the FSM into reply-receiving state.
-    if (!more) {
-        receiving_reply = true;
-        message_begins = true;
-    }
+    //  Flip the FSM into reply-receiving state.
+    receiving_reply = true;
+    message_begins = true;
 
     return 0;
 }

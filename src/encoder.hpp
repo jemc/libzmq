@@ -90,12 +90,29 @@ namespace zmq
                 //  in the buffer.
                 if (!to_write) {
                     if (new_msg_flag) {
-                        int rc = in_progress->close ();
+                        msg_t *finished_msg = in_progress;
+
+                        if (in_progress->linked_tail())
+        printf("XX %i, %lu, %s\n", in_progress->linked_tail()->flags (), in_progress->linked_tail()->size (), in_progress->linked_tail()->data ());
+
+                        //  Move on to the next linked message part if any.
+                        if (finished_msg->is_linked ())
+                            in_progress = finished_msg->unlink_tail ();
+                        else
+                            in_progress = NULL;
+
+                        if (in_progress)
+        printf("YY %i, %lu, %s\n", in_progress->flags (), in_progress->size (), in_progress->data ());
+
+                        //  Close the finished message part.
+                        int rc = finished_msg->close ();
                         errno_assert (rc == 0);
-                        rc = in_progress->init ();
+                        rc = finished_msg->init ();
                         errno_assert (rc == 0);
-                        in_progress = NULL;
-                        break;
+
+                        //  Done encoding the message.
+                        if (!in_progress)
+                            break;
                     }
                     (static_cast <T*> (this)->*next) ();
                 }

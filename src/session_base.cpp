@@ -138,6 +138,8 @@ int zmq::session_base_t::pull_msg (msg_t *msg_)
 
 int zmq::session_base_t::push_msg (msg_t *msg_)
 {
+        printf("<< %i, %lu, %s\n", msg_->flags (), msg_->size (), msg_->data ());
+    
     if(msg_->flags() & msg_t::command)
         return 0;
     if (pipe && pipe->write (msg_)) {

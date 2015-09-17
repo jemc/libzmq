@@ -60,6 +60,7 @@ namespace zmq
         {
             more = 1,           //  Followed by more parts
             command = 2,        //  Command frame (see ZMTP spec)
+            linked = 4,         //  Linked to more parts (as a linked list)
             credential = 32,
             identity = 64,
             shared = 128
@@ -91,6 +92,7 @@ namespace zmq
         metadata_t *metadata () const;
         void set_metadata (metadata_t *metadata_);
         void reset_metadata ();
+        bool is_linked () const;
         bool is_identity () const;
         bool is_credential () const;
         bool is_delimiter () const;
@@ -99,6 +101,9 @@ namespace zmq
         bool is_zcmsg() const;
         uint32_t get_routing_id ();
         int set_routing_id (uint32_t routing_id_);
+        void link_tail (msg_t *msg_);
+        msg_t *unlink_tail ();
+        msg_t *linked_tail ();
 
         //  After calling this function you can copy the message in POD-style
         //  refs_ times. No need to call copy.
@@ -166,6 +171,10 @@ namespace zmq
                 unsigned char flags;
                 uint32_t routing_id;
             } base;
+            struct {
+                msg_t *tail;
+                unsigned char unused [msg_t_size - (8 + sizeof (msg_t *))];
+            } linked;
             struct {
                 metadata_t *metadata;
                 unsigned char data [max_vsm_size];

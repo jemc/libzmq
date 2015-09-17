@@ -70,6 +70,7 @@ namespace zmq
 
         //  If true, we are starting to send/recv a message. The first part
         //  of the message must be empty message part (backtrace stack bottom).
+        //  TODO: remove this after rewriting xrecv.
         bool message_begins;
 
         //  The pipe the request was sent to and where the reply is expected.

@@ -57,7 +57,6 @@ namespace zmq
         //  Overrides of functions from socket_base_t.
         void xattach_pipe (zmq::pipe_t *pipe_, bool subscribe_to_all_);        
         int xsend (zmq::msg_t *msg_);
-        int xsendm (zmq::mmsg_t *msg_);
         int xrecv (zmq::msg_t *msg_);
         bool xhas_in ();
         bool xhas_out ();

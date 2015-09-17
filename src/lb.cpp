@@ -34,9 +34,7 @@
 
 zmq::lb_t::lb_t () :
     active (0),
-    current (0),
-    more (false),
-    dropping (false)
+    current (0)
 {
 }
 
@@ -54,11 +52,6 @@ void zmq::lb_t::attach (pipe_t *pipe_)
 void zmq::lb_t::pipe_terminated (pipe_t *pipe_)
 {
     pipes_t::size_type index = pipes.index (pipe_);
-
-    //  If we are in the middle of multipart message and current pipe
-    //  have disconnected, we have to drop the remainder of the message.
-    if (index == current && more)
-        dropping = true;
 
     //  Remove the pipe from the list; adjust number of active pipes
     //  accordingly.
@@ -85,20 +78,6 @@ int zmq::lb_t::send (msg_t *msg_)
 
 int zmq::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
 {
-    //  Drop the message if required. If we are at the end of the message
-    //  switch back to non-dropping mode.
-    if (dropping) {
-
-        more = msg_->flags () & msg_t::more ? true : false;
-        dropping = more;
-
-        int rc = msg_->close ();
-        errno_assert (rc == 0);
-        rc = msg_->init ();
-        errno_assert (rc == 0);
-        return 0;
-    }
-
     while (active > 0) {
         if (pipes [current]->write (msg_))
         {
@@ -107,7 +86,6 @@ int zmq::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
             break;
         }
 
-        zmq_assert (!more);
         active--;
         if (current < active)
             pipes.swap (current, active);
@@ -121,15 +99,11 @@ int zmq::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
         return -1;
     }
 
-    //  If it's final part of the message we can flush it downstream and
-    //  continue round-robining (load balance).
-    more = msg_->flags () & msg_t::more? true: false;
-    if (!more) {
-        pipes [current]->flush ();
-        current = (current + 1) % active;
-    }
+    pipes [current]->flush ();
+    current = (current + 1) % active;
 
     //  Detach the message from the data buffer.
+    //  TODO: what to do with the tail here?
     int rc = msg_->init ();
     errno_assert (rc == 0);
 
@@ -138,13 +112,7 @@ int zmq::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
 
 bool zmq::lb_t::has_out ()
 {
-    //  If one part of the message was already written we can definitely
-    //  write the rest of the message.
-    if (more)
-        return true;
-
     while (active > 0) {
-
         //  Check whether a pipe has room for another message.
         if (pipes [current]->check_write ())
             return true;
